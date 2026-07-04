@@ -155,6 +155,20 @@
   .btn-pause { background: var(--blue); color: white; }
   .btn-reset { background: var(--purple); color: white; }
   .btn-delete { background: #999; color: white; }
+  .timer-card.editing { border-left-color: var(--purple); }
+  .edit-form input[type="text"] {
+    width: 100%;
+    padding: 9px 12px;
+    border-radius: 10px;
+    border: 2px solid #d8c8ee;
+    font-size: 0.95rem;
+    outline: none;
+    margin-bottom: 8px;
+  }
+  .edit-form input[type="text"]:focus { border-color: var(--purple); }
+  .edit-preview { margin-bottom: 10px; }
+  .btn-confirm { background: var(--purple); color: white; }
+  .btn-cancel { background: #999; color: white; }
   .done-text {
     text-align: center;
     color: var(--red);
@@ -184,7 +198,7 @@
   <label>計時器名稱</label>
   <input type="text" id="nameInput" placeholder="景點名稱" maxlength="20">
 
-  <label>時間 (直接打數字，例如 2000 = 20 分 00 秒，會自動加 5 分 20 秒)</label>
+  <label>時間 (直接打數字，例如 2000 = 20 分 00 秒，會自動加 4 分 40 秒)</label>
   <input type="text" id="timeInput" placeholder="輸入數字，例如 2000" inputmode="numeric" maxlength="4">
 
   <div class="preview" id="preview">請輸入時間…</div>
@@ -205,7 +219,7 @@ const startBtn = document.getElementById('startBtn');
 const timersEl = document.getElementById('timers');
 const emptyHint = document.getElementById('emptyHint');
 
-const BUFFER_SECONDS = 5 * 60 + 20; // 5 分 20 秒
+const BUFFER_SECONDS = 4 * 60 + 40; // 4 分 40 秒
 
 // 只允許輸入數字，並即時預覽解析結果
 timeInput.addEventListener('input', () => {
@@ -339,6 +353,38 @@ function resetTimer(timer) {
   renderTimerCard(timer);
 }
 
+function openReset(timer) {
+  timer.wasRunning = timer.running && !timer.finished;
+  if (timer.intervalId) {
+    clearInterval(timer.intervalId);
+    timer.intervalId = null;
+    timer.running = false;
+  }
+  timer.editing = true;
+  renderTimerCard(timer);
+}
+
+function cancelReset(timer) {
+  timer.editing = false;
+  if (timer.wasRunning && !timer.finished) {
+    startTicking(timer);
+  }
+  renderTimerCard(timer);
+}
+
+function confirmReset(timer, newName, digits) {
+  const base = parseDigitsToSeconds(digits);
+  if (base === null || base <= 0) return false;
+  timer.name = newName.trim() || timer.name;
+  timer.total = base + BUFFER_SECONDS;
+  timer.remaining = timer.total;
+  timer.finished = false;
+  timer.editing = false;
+  startTicking(timer);
+  renderTimerCard(timer);
+  return true;
+}
+
 function deleteTimer(timer) {
   clearInterval(timer.intervalId);
   timers = timers.filter(t => t.id !== timer.id);
@@ -368,6 +414,58 @@ function renderTimerCard(timer) {
     card.classList.add('warning');
   }
 
+  if (timer.editing) {
+    card.classList.add('editing');
+    card.innerHTML = `
+      <div class="timer-top">
+        <span class="timer-name">🔄 重新設定</span>
+      </div>
+      <div class="edit-form">
+        <input type="text" class="edit-name-input" value="${escapeHtml(timer.name)}" maxlength="20" placeholder="景點名稱">
+        <input type="text" class="edit-time-input" inputmode="numeric" maxlength="4" placeholder="輸入新時間，例如 2000">
+        <div class="preview edit-preview">請輸入時間…</div>
+        <div class="timer-actions">
+          <button class="btn-confirm">確定重設</button>
+          <button class="btn-cancel">取消</button>
+        </div>
+      </div>
+    `;
+
+    const nameEl = card.querySelector('.edit-name-input');
+    const timeEl = card.querySelector('.edit-time-input');
+    const previewEl = card.querySelector('.edit-preview');
+    const confirmBtn = card.querySelector('.btn-confirm');
+    const cancelBtn = card.querySelector('.btn-cancel');
+
+    function updateEditPreview() {
+      const base = parseDigitsToSeconds(timeEl.value);
+      if (base === null) {
+        previewEl.innerHTML = '請輸入時間…';
+        return;
+      }
+      previewEl.innerHTML = `輸入 ${formatMMSS(base)} → 自動加 ${formatMMSS(BUFFER_SECONDS)} → 開始倒數 <b>${formatMMSS(base + BUFFER_SECONDS)}</b>`;
+    }
+
+    timeEl.addEventListener('input', () => {
+      timeEl.value = timeEl.value.replace(/\D/g, '').slice(0, 4);
+      updateEditPreview();
+    });
+    timeEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') confirmBtn.click(); });
+    nameEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') timeEl.focus(); });
+
+    confirmBtn.addEventListener('click', () => {
+      const ok = confirmReset(timer, nameEl.value, timeEl.value);
+      if (!ok) {
+        timeEl.style.borderColor = 'var(--red)';
+        setTimeout(() => { timeEl.style.borderColor = ''; }, 800);
+      }
+    });
+    cancelBtn.addEventListener('click', () => cancelReset(timer));
+
+    timeEl.focus();
+    return;
+  }
+
   card.innerHTML = `
     <div class="timer-top">
       <span class="timer-name">🌼 ${escapeHtml(timer.name)}</span>
@@ -393,7 +491,7 @@ function renderTimerCard(timer) {
       pauseResume(timer);
     }
   });
-  resetBtn.addEventListener('click', () => resetTimer(timer));
+  resetBtn.addEventListener('click', () => openReset(timer));
   deleteBtn.addEventListener('click', () => deleteTimer(timer));
 }
 
