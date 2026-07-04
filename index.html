@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PIKMIN 計時器</title>
+<style>
+  :root {
+    --red: #e8493a;
+    --yellow: #f2c94c;
+    --blue: #4a90d9;
+    --purple: #9b6bd1;
+    --white: #f5f5f0;
+    --leaf: #3fae5c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Microsoft JhengHei", "PingFang TC", sans-serif;
+    background: radial-gradient(circle at top, #7ec850 0%, #3f8f3f 55%, #245c2a 100%);
+    min-height: 100vh;
+    padding: 24px 12px 60px;
+    color: #1e2b1e;
+  }
+  h1 {
+    text-align: center;
+    color: var(--white);
+    text-shadow: 2px 2px 0 #245c2a, -1px -1px 0 #245c2a;
+    font-size: 2rem;
+    margin-bottom: 4px;
+    letter-spacing: 2px;
+  }
+  .subtitle {
+    text-align: center;
+    color: #e9ffe4;
+    margin-bottom: 24px;
+    font-size: 0.9rem;
+  }
+  .new-timer {
+    max-width: 480px;
+    margin: 0 auto 30px;
+    background: rgba(255,255,255,0.92);
+    border-radius: 16px;
+    padding: 18px 20px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+    border: 3px solid var(--leaf);
+  }
+  .new-timer label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: bold;
+    margin: 10px 0 4px;
+    color: #245c2a;
+  }
+  .new-timer input[type="text"] {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 2px solid #bcd8b8;
+    font-size: 1rem;
+    outline: none;
+  }
+  .new-timer input[type="text"]:focus {
+    border-color: var(--leaf);
+  }
+  .preview {
+    margin-top: 8px;
+    font-size: 0.95rem;
+    color: #444;
+    min-height: 1.3em;
+  }
+  .preview b { color: var(--red); font-size: 1.1rem; }
+  .start-btn {
+    margin-top: 16px;
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 10px;
+    background: var(--red);
+    color: white;
+    font-size: 1.05rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: transform 0.1s, background 0.2s;
+  }
+  .start-btn:hover { background: #c93a2d; }
+  .start-btn:active { transform: scale(0.97); }
+
+  .timers {
+    max-width: 480px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .timer-card {
+    background: rgba(255,255,255,0.95);
+    border-radius: 16px;
+    padding: 16px 20px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+    border-left: 8px solid var(--leaf);
+    position: relative;
+    overflow: hidden;
+  }
+  .timer-card.warning { border-left-color: var(--yellow); }
+  .timer-card.done {
+    border-left-color: var(--red);
+    animation: flash 0.8s infinite;
+  }
+  @keyframes flash {
+    0%, 100% { background: rgba(255,255,255,0.95); }
+    50% { background: #ffd7d2; }
+  }
+  .timer-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .timer-name {
+    font-weight: bold;
+    font-size: 1.1rem;
+    color: #245c2a;
+  }
+  .timer-badge {
+    font-size: 0.75rem;
+    background: var(--leaf);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 999px;
+  }
+  .timer-clock {
+    font-size: 2.6rem;
+    font-weight: bold;
+    text-align: center;
+    letter-spacing: 2px;
+    margin: 10px 0;
+    color: #1e2b1e;
+    font-variant-numeric: tabular-nums;
+  }
+  .timer-card.warning .timer-clock { color: #b8860b; }
+  .timer-card.done .timer-clock { color: var(--red); }
+  .timer-actions {
+    display: flex;
+    gap: 8px;
+  }
+  .timer-actions button {
+    flex: 1;
+    padding: 8px;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    font-weight: bold;
+  }
+  .btn-pause { background: var(--blue); color: white; }
+  .btn-reset { background: var(--purple); color: white; }
+  .btn-delete { background: #999; color: white; }
+  .done-text {
+    text-align: center;
+    color: var(--red);
+    font-weight: bold;
+    margin-top: 4px;
+  }
+  .empty-hint {
+    text-align: center;
+    color: #eaffea;
+    margin-top: 20px;
+    font-size: 0.9rem;
+  }
+  .footer {
+    text-align: center;
+    color: rgba(255,255,255,0.7);
+    font-size: 0.75rem;
+    margin-top: 40px;
+  }
+</style>
+</head>
+<body>
+
+<h1>🌱 PIKMIN 計時器 🌱</h1>
+<div class="subtitle">輸入名稱與時間,系統會自動加 20 秒緩衝再開始倒數</div>
+
+<div class="new-timer">
+  <label>計時器名稱</label>
+  <input type="text" id="nameInput" placeholder="景點名稱" maxlength="20">
+
+  <label>時間 (直接打數字，例如 2000 = 20 分 00 秒，會自動加 5 分 20 秒)</label>
+  <input type="text" id="timeInput" placeholder="輸入數字，例如 2000" inputmode="numeric" maxlength="4">
+
+  <div class="preview" id="preview">請輸入時間…</div>
+
+  <button class="start-btn" id="startBtn">開始倒數 🚀</button>
+</div>
+
+<div class="timers" id="timers"></div>
+<div class="empty-hint" id="emptyHint">目前還沒有計時器，快新增一個吧！</div>
+
+<footer class="footer">非官方粉絲自製工具，與任天堂無關</footer>
+
+<script>
+const nameInput = document.getElementById('nameInput');
+const timeInput = document.getElementById('timeInput');
+const preview = document.getElementById('preview');
+const startBtn = document.getElementById('startBtn');
+const timersEl = document.getElementById('timers');
+const emptyHint = document.getElementById('emptyHint');
+
+const BUFFER_SECONDS = 5 * 60 + 20; // 5 分 20 秒
+
+// 只允許輸入數字，並即時預覽解析結果
+timeInput.addEventListener('input', () => {
+  timeInput.value = timeInput.value.replace(/\D/g, '').slice(0, 4);
+  updatePreview();
+});
+
+function parseDigitsToSeconds(digits) {
+  if (!digits) return null;
+  let minutes = 0, seconds = 0;
+  if (digits.length <= 2) {
+    seconds = parseInt(digits, 10);
+  } else {
+    const secPart = digits.slice(-2);
+    const minPart = digits.slice(0, -2);
+    seconds = parseInt(secPart, 10);
+    minutes = parseInt(minPart, 10);
+  }
+  return minutes * 60 + seconds;
+}
+
+function formatMMSS(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+}
+
+function updatePreview() {
+  const digits = timeInput.value;
+  const base = parseDigitsToSeconds(digits);
+  if (base === null) {
+    preview.innerHTML = '請輸入時間…';
+    return;
+  }
+  const total = base + BUFFER_SECONDS;
+  preview.innerHTML = `輸入 ${formatMMSS(base)} → 自動加 ${formatMMSS(BUFFER_SECONDS)} → 開始倒數 <b>${formatMMSS(total)}</b>`;
+}
+
+// ---- 音效：用 Web Audio API 產生警報聲，不需要任何音檔 ----
+let audioCtx = null;
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+function beep(freq, startTime, duration) {
+  const ctx = getAudioCtx();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'square';
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0.0001, startTime);
+  gain.gain.exponentialRampToValueAtTime(0.3, startTime + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(startTime);
+  osc.stop(startTime + duration + 0.05);
+}
+function playAlarm() {
+  const ctx = getAudioCtx();
+  const now = ctx.currentTime;
+  for (let i = 0; i < 4; i++) {
+    beep(880, now + i * 0.35, 0.2);
+    beep(660, now + i * 0.35 + 0.2, 0.12);
+  }
+}
+
+// ---- 計時器管理 ----
+let timers = [];
+let nextId = 1;
+
+function createTimer(name, baseSeconds) {
+  const total = baseSeconds + BUFFER_SECONDS;
+  const timer = {
+    id: nextId++,
+    name: name || `計時器 ${nextId - 1}`,
+    total,
+    remaining: total,
+    running: true,
+    finished: false,
+    intervalId: null,
+  };
+  timers.push(timer);
+  startTicking(timer);
+  render();
+}
+
+function startTicking(timer) {
+  if (timer.intervalId) return;
+  timer.running = true;
+  timer.intervalId = setInterval(() => {
+    if (timer.remaining <= 0) {
+      finishTimer(timer);
+      return;
+    }
+    timer.remaining -= 1;
+    if (timer.remaining <= 0) {
+      finishTimer(timer);
+    }
+    renderTimerCard(timer);
+  }, 1000);
+}
+
+function finishTimer(timer) {
+  clearInterval(timer.intervalId);
+  timer.intervalId = null;
+  timer.running = false;
+  timer.finished = true;
+  timer.remaining = 0;
+  playAlarm();
+  renderTimerCard(timer);
+}
+
+function pauseResume(timer) {
+  if (timer.finished) return;
+  if (timer.running) {
+    clearInterval(timer.intervalId);
+    timer.intervalId = null;
+    timer.running = false;
+  } else {
+    startTicking(timer);
+  }
+  renderTimerCard(timer);
+}
+
+function resetTimer(timer) {
+  clearInterval(timer.intervalId);
+  timer.intervalId = null;
+  timer.remaining = timer.total;
+  timer.finished = false;
+  startTicking(timer);
+  renderTimerCard(timer);
+}
+
+function deleteTimer(timer) {
+  clearInterval(timer.intervalId);
+  timers = timers.filter(t => t.id !== timer.id);
+  render();
+}
+
+function render() {
+  timersEl.innerHTML = '';
+  emptyHint.style.display = timers.length === 0 ? 'block' : 'none';
+  timers.forEach(timer => {
+    const card = document.createElement('div');
+    card.className = 'timer-card';
+    card.id = 'timer-' + timer.id;
+    timersEl.appendChild(card);
+    renderTimerCard(timer);
+  });
+}
+
+function renderTimerCard(timer) {
+  const card = document.getElementById('timer-' + timer.id);
+  if (!card) return;
+
+  card.className = 'timer-card';
+  if (timer.finished) {
+    card.classList.add('done');
+  } else if (timer.remaining <= 10) {
+    card.classList.add('warning');
+  }
+
+  card.innerHTML = `
+    <div class="timer-top">
+      <span class="timer-name">🌼 ${escapeHtml(timer.name)}</span>
+      <span class="timer-badge">+${formatMMSS(BUFFER_SECONDS)} 已加成</span>
+    </div>
+    <div class="timer-clock">${formatMMSS(timer.remaining)}</div>
+    ${timer.finished ? '<div class="done-text">⏰ 時間到！</div>' : ''}
+    <div class="timer-actions">
+      <button class="btn-pause">${timer.finished ? '重新開始' : (timer.running ? '暫停' : '繼續')}</button>
+      <button class="btn-reset">重設</button>
+      <button class="btn-delete">刪除</button>
+    </div>
+  `;
+
+  const pauseBtn = card.querySelector('.btn-pause');
+  const resetBtn = card.querySelector('.btn-reset');
+  const deleteBtn = card.querySelector('.btn-delete');
+
+  pauseBtn.addEventListener('click', () => {
+    if (timer.finished) {
+      resetTimer(timer);
+    } else {
+      pauseResume(timer);
+    }
+  });
+  resetBtn.addEventListener('click', () => resetTimer(timer));
+  deleteBtn.addEventListener('click', () => deleteTimer(timer));
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+startBtn.addEventListener('click', () => {
+  // 解鎖瀏覽器音訊（需要使用者互動才能播放）
+  getAudioCtx();
+
+  const digits = timeInput.value;
+  const base = parseDigitsToSeconds(digits);
+  if (base === null || base <= 0) {
+    timeInput.focus();
+    timeInput.style.borderColor = 'var(--red)';
+    setTimeout(() => { timeInput.style.borderColor = ''; }, 800);
+    return;
+  }
+  const name = nameInput.value.trim();
+  createTimer(name, base);
+
+  nameInput.value = '';
+  timeInput.value = '';
+  updatePreview();
+  nameInput.focus();
+});
+
+timeInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') startBtn.click();
+});
+nameInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') startBtn.click();
+});
+
+render();
+</script>
+</body>
+</html>
