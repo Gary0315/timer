@@ -306,20 +306,24 @@ function createTimer(name, baseSeconds) {
   render();
 }
 
+// 用「結束時間點」而不是每次 tick 減 1 來算剩餘秒數，
+// 這樣即使分頁在背景被瀏覽器節流、tick 沒有準時觸發，
+// 只要一算還是會對到正確的剩餘時間，不會因為背景而多跑或停住。
 function startTicking(timer) {
   if (timer.intervalId) return;
   timer.running = true;
-  timer.intervalId = setInterval(() => {
-    if (timer.remaining <= 0) {
-      finishTimer(timer);
-      return;
-    }
-    timer.remaining -= 1;
-    if (timer.remaining <= 0) {
-      finishTimer(timer);
-    }
-    renderTimerCard(timer);
-  }, 1000);
+  timer.endTime = Date.now() + timer.remaining * 1000;
+  timer.intervalId = setInterval(() => tickTimer(timer), 1000);
+}
+
+function tickTimer(timer) {
+  const remainingSec = Math.max(0, Math.ceil((timer.endTime - Date.now()) / 1000));
+  if (remainingSec <= 0) {
+    finishTimer(timer);
+    return;
+  }
+  timer.remaining = remainingSec;
+  renderTimerCard(timer);
 }
 
 function finishTimer(timer) {
@@ -335,6 +339,7 @@ function finishTimer(timer) {
 function pauseResume(timer) {
   if (timer.finished) return;
   if (timer.running) {
+    timer.remaining = Math.max(0, Math.ceil((timer.endTime - Date.now()) / 1000));
     clearInterval(timer.intervalId);
     timer.intervalId = null;
     timer.running = false;
@@ -343,6 +348,26 @@ function pauseResume(timer) {
   }
   renderTimerCard(timer);
 }
+
+// 分頁從背景切回前景時，立刻依照真實時間重新計算一次，
+// 避免顯示的時間停在切走前那一刻、或漏掉已經到時間的提醒。
+function recalcAndRenderAll() {
+  timers.forEach(timer => {
+    if (timer.running && !timer.finished) {
+      const remainingSec = Math.max(0, Math.ceil((timer.endTime - Date.now()) / 1000));
+      if (remainingSec <= 0) {
+        finishTimer(timer);
+      } else {
+        timer.remaining = remainingSec;
+        renderTimerCard(timer);
+      }
+    }
+  });
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) recalcAndRenderAll();
+});
 
 function resetTimer(timer) {
   clearInterval(timer.intervalId);
