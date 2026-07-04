@@ -326,14 +326,19 @@ function tickTimer(timer) {
   renderTimerCard(timer);
 }
 
+const FLASH_DURATION_MS = 15000; // 時間到之後閃爍持續 15 秒
+
 function finishTimer(timer) {
   clearInterval(timer.intervalId);
   timer.intervalId = null;
   timer.running = false;
   timer.finished = true;
   timer.remaining = 0;
+  timer.finishedAt = Date.now();
   playAlarm();
   renderTimerCard(timer);
+  // 15 秒後強制重新渲染一次，讓它從閃爍紅色變回靜態綠色
+  setTimeout(() => renderTimerCard(timer), FLASH_DURATION_MS);
 }
 
 function pauseResume(timer) {
@@ -434,7 +439,9 @@ function renderTimerCard(timer) {
 
   card.className = 'timer-card';
   if (timer.finished) {
-    card.classList.add('done');
+    const stillFlashing = timer.finishedAt && (Date.now() - timer.finishedAt < FLASH_DURATION_MS);
+    if (stillFlashing) card.classList.add('done');
+    // 超過 15 秒就不加 done class，維持一般的綠色靜態樣式
   } else if (timer.remaining <= 10) {
     card.classList.add('warning');
   }
@@ -553,6 +560,30 @@ timeInput.addEventListener('keydown', (e) => {
 nameInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') startBtn.click();
 });
+
+// 每 5 秒自動排序一次：快到的（剩餘時間少）排最上面，
+// 正在編輯（按了重設、還沒確定新時間）的排最下面。
+// 只搬動既有的卡片節點（不重新產生 innerHTML），
+// 避免打斷使用者正在編輯中的輸入內容。
+function sortAndReorder() {
+  timers.sort((a, b) => {
+    if (a.editing && !b.editing) return 1;
+    if (!a.editing && b.editing) return -1;
+    if (a.editing && b.editing) return 0;
+    return a.remaining - b.remaining;
+  });
+  timers.forEach(timer => {
+    const card = document.getElementById('timer-' + timer.id);
+    if (card) timersEl.appendChild(card);
+  });
+}
+
+setInterval(() => {
+  if (timers.length < 2) return;
+  const anyEditing = timers.some(t => t.editing);
+  if (anyEditing) return; // 有人正在編輯時先不要搬動位置，避免打斷輸入
+  sortAndReorder();
+}, 5000);
 
 render();
 </script>
