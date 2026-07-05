@@ -192,13 +192,13 @@
 <body>
 
 <h1>🌱 PIKMIN 計時器 🌱</h1>
-<div class="subtitle">輸入名稱與時間,系統會自動加 20 秒緩衝再開始倒數</div>
+<div class="subtitle">輸入名稱與時間,系統會自動加 4 分 30 秒緩衝再開始倒數</div>
 
 <div class="new-timer">
   <label>計時器名稱</label>
   <input type="text" id="nameInput" placeholder="景點名稱" maxlength="20">
 
-  <label>時間 (直接打數字，例如 2000 = 20 分 00 秒，會自動加 4 分 40 秒)</label>
+  <label>時間 (直接打數字，例如 2000 = 20 分 00 秒，會自動加 4 分 30 秒)</label>
   <input type="text" id="timeInput" placeholder="輸入數字，例如 2000" inputmode="numeric" maxlength="4">
 
   <div class="preview" id="preview">請輸入時間…</div>
@@ -219,7 +219,7 @@ const startBtn = document.getElementById('startBtn');
 const timersEl = document.getElementById('timers');
 const emptyHint = document.getElementById('emptyHint');
 
-const BUFFER_SECONDS = 4 * 60 + 40; // 4 分 40 秒
+const BUFFER_SECONDS = 4 * 60 + 30; // 4 分 30 秒
 
 // 只允許輸入數字，並即時預覽解析結果
 timeInput.addEventListener('input', () => {
@@ -290,6 +290,81 @@ function playAlarm() {
 let timers = [];
 let nextId = 1;
 
+// ---- localStorage 存檔，重新整理／關掉分頁後計時器不會不見 ----
+const STORAGE_KEY = 'pikmin-timers-v1';
+
+function saveState() {
+  try {
+    const data = {
+      nextId,
+      timers: timers.map(t => ({
+        id: t.id,
+        name: t.name,
+        total: t.total,
+        remaining: t.remaining,
+        running: t.running,
+        finished: t.finished,
+        finishedAt: t.finishedAt || null,
+        endTime: t.endTime || null,
+      })),
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch (e) {
+    // localStorage 不可用（例如無痕模式關閉儲存）時就略過，不影響倒數功能
+  }
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    nextId = data.nextId || 1;
+    const now = Date.now();
+
+    timers = (data.timers || []).map(saved => {
+      const timer = {
+        id: saved.id,
+        name: saved.name,
+        total: saved.total,
+        remaining: saved.remaining,
+        running: false,
+        finished: saved.finished,
+        finishedAt: saved.finishedAt || null,
+        intervalId: null,
+        editing: false,
+      };
+
+      if (timer.finished) {
+        // 已結束的計時器：依照存檔的結束時間點判斷閃爍是否還沒跑完 15 秒
+        if (timer.finishedAt && now - timer.finishedAt < FLASH_DURATION_MS) {
+          const remainMs = FLASH_DURATION_MS - (now - timer.finishedAt);
+          setTimeout(() => renderTimerCard(timer), remainMs);
+        }
+      } else if (saved.running && saved.endTime) {
+        // 原本正在倒數：用真實經過的時間重新算出剩餘秒數
+        const remainingSec = Math.max(0, Math.ceil((saved.endTime - now) / 1000));
+        if (remainingSec <= 0) {
+          timer.remaining = 0;
+          timer.finished = true;
+          timer.finishedAt = now;
+          setTimeout(() => renderTimerCard(timer), FLASH_DURATION_MS);
+        } else {
+          timer.remaining = remainingSec;
+          startTicking(timer);
+        }
+      }
+      // 原本是暫停中：remaining 保持存檔的值，不啟動 ticking
+
+      return timer;
+    });
+
+    saveState(); // 把可能因為時間經過而校正過的狀態（例如關掉分頁時剛好倒數完）寫回去
+  } catch (e) {
+    timers = [];
+  }
+}
+
 function createTimer(name, baseSeconds) {
   const total = baseSeconds + BUFFER_SECONDS;
   const timer = {
@@ -304,6 +379,7 @@ function createTimer(name, baseSeconds) {
   timers.push(timer);
   startTicking(timer);
   render();
+  saveState();
 }
 
 // 用「結束時間點」而不是每次 tick 減 1 來算剩餘秒數，
@@ -324,6 +400,7 @@ function tickTimer(timer) {
   }
   timer.remaining = remainingSec;
   renderTimerCard(timer);
+  saveState();
 }
 
 const FLASH_DURATION_MS = 15000; // 時間到之後閃爍持續 15 秒
@@ -337,6 +414,7 @@ function finishTimer(timer) {
   timer.finishedAt = Date.now();
   playAlarm();
   renderTimerCard(timer);
+  saveState();
   // 15 秒後強制重新渲染一次，讓它從閃爍紅色變回靜態綠色
   setTimeout(() => renderTimerCard(timer), FLASH_DURATION_MS);
 }
@@ -352,6 +430,7 @@ function pauseResume(timer) {
     startTicking(timer);
   }
   renderTimerCard(timer);
+  saveState();
 }
 
 // 分頁從背景切回前景時，立刻依照真實時間重新計算一次，
@@ -368,6 +447,7 @@ function recalcAndRenderAll() {
       }
     }
   });
+  saveState();
 }
 
 document.addEventListener('visibilitychange', () => {
@@ -381,6 +461,7 @@ function resetTimer(timer) {
   timer.finished = false;
   startTicking(timer);
   renderTimerCard(timer);
+  saveState();
 }
 
 function openReset(timer) {
@@ -392,6 +473,7 @@ function openReset(timer) {
   }
   timer.editing = true;
   renderTimerCard(timer);
+  saveState();
 }
 
 function cancelReset(timer) {
@@ -400,6 +482,7 @@ function cancelReset(timer) {
     startTicking(timer);
   }
   renderTimerCard(timer);
+  saveState();
 }
 
 function confirmReset(timer, newName, digits) {
@@ -412,6 +495,7 @@ function confirmReset(timer, newName, digits) {
   timer.editing = false;
   startTicking(timer);
   renderTimerCard(timer);
+  saveState();
   return true;
 }
 
@@ -419,6 +503,7 @@ function deleteTimer(timer) {
   clearInterval(timer.intervalId);
   timers = timers.filter(t => t.id !== timer.id);
   render();
+  saveState();
 }
 
 function render() {
@@ -565,12 +650,22 @@ nameInput.addEventListener('keydown', (e) => {
 // 正在編輯（按了重設、還沒確定新時間）的排最下面。
 // 只搬動既有的卡片節點（不重新產生 innerHTML），
 // 避免打斷使用者正在編輯中的輸入內容。
+// 排序分三層：還在倒數的（依剩餘時間由少到多，快到的在最上面）
+// → 已經結束的（沉到下面）→ 正在編輯的（最下面）。
+function timerRank(timer) {
+  if (timer.editing) return 2;
+  if (timer.finished) return 1;
+  return 0;
+}
+
 function sortAndReorder() {
   timers.sort((a, b) => {
-    if (a.editing && !b.editing) return 1;
-    if (!a.editing && b.editing) return -1;
-    if (a.editing && b.editing) return 0;
-    return a.remaining - b.remaining;
+    const ra = timerRank(a);
+    const rb = timerRank(b);
+    if (ra !== rb) return ra - rb;
+    if (ra === 0) return a.remaining - b.remaining;
+    if (ra === 1) return (a.finishedAt || 0) - (b.finishedAt || 0);
+    return 0;
   });
   timers.forEach(timer => {
     const card = document.getElementById('timer-' + timer.id);
@@ -583,8 +678,10 @@ setInterval(() => {
   const anyEditing = timers.some(t => t.editing);
   if (anyEditing) return; // 有人正在編輯時先不要搬動位置，避免打斷輸入
   sortAndReorder();
+  saveState();
 }, 5000);
 
+loadState();
 render();
 </script>
 </body>
