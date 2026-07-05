@@ -447,6 +447,11 @@ function recalcAndRenderAll() {
       }
     }
   });
+  // 分頁在背景時，瀏覽器會把每 5 秒的自動排序 setInterval 節流到幾乎不會觸發，
+  // 所以切回分頁的當下要順便強制重新排序一次，不然畫面順序會停在切走前那一刻。
+  if (timers.length >= 2 && !timers.some(t => t.editing)) {
+    sortAndReorder();
+  }
   saveState();
 }
 
